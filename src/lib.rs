@@ -72,3 +72,41 @@ pub mod protocol {
         format!("ERR {}\n", msg)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn join_and_broadcast() {
+        let mut state = ChatState::new();
+        let (tx1, mut rx1) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::unbounded_channel();
+
+        state.join("alice".to_string(), tx1).unwrap();
+        state.join("bob".to_string(), tx2).unwrap();
+
+        state.broadcast("alice", "hello");
+
+        // alice shouldn't receive her own message
+        assert!(rx1.try_recv().is_err());
+
+        let msg = rx2.try_recv().unwrap();
+        assert!(msg.contains("FROM alice hello"));
+    }
+
+    #[tokio::test]
+    async fn username_must_be_unique() {
+        let mut state = ChatState::new();
+        let (tx1, _) = mpsc::unbounded_channel();
+        let (tx2, _) = mpsc::unbounded_channel();
+
+        state.join("alice".to_string(), tx1).unwrap();
+        let err = state.join("alice".to_string(), tx2).unwrap_err();
+
+        match err {
+            JoinError::UsernameTaken(name) => assert_eq!(name, "alice"),
+        }
+    }
+}
+
